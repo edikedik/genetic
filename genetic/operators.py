@@ -25,7 +25,9 @@ __all__ = (
     'GenericCrossover',
     'GenericMutator',
     'GenericPolicy',
-    'ktournament'
+    'ktournament',
+    'sus',
+    'rank_selection'
 )
 
 # TODO should we reimplement Generic* in terms of the Functor API? Consider that
@@ -33,12 +35,18 @@ __all__ = (
 
 
 # TODO abstract away cache access to make implementing different caches easy
+# TODO: maybe get rid of the Executor
 class GenericEstimator(Generic[Individual], Estimator):
 
     def __init__(self,
                  func: Callable[[Individual], Ord],
                  cache=False,
                  executor: Optional[Executor] = None):
+        """
+        :param func: A scoring function, i.e., a `Callable` accepting an `Individual` and returning `Ord`-typed score.
+        :param cache: Whether to cache the scores.
+        :param executor:
+        """
         if not callable(func):
             raise ValueError
         if not (executor is None or isinstance(executor, Executor)):
@@ -49,7 +57,7 @@ class GenericEstimator(Generic[Individual], Estimator):
 
     @property
     def func(self) -> Callable[[Individual], Ord]:
-        return self.func
+        return self._func
 
     @property
     def cache(self) -> Optional[Dict[Individual, Ord]]:
@@ -431,9 +439,6 @@ class GenericPolicy(Generic[Individual, Record], SelectionPolicy):
         return selected
 
 
-# TODO add decorators; consider inferring type compatibility
-
-
 def ktournament(k: int, key: Callable[[Record], Ord], n: int, individuals: List[Individual], records: List[Record],
                 reverse=False, replace=False) -> List[int]:
     """
@@ -535,6 +540,27 @@ def ktournament(k: int, key: Callable[[Record], Ord], n: int, individuals: List[
             selected.append(selected_idx)
             available[selected_idx] = False
     return selected
+
+
+def sus(key, nkeep, individuals, records):
+    fs = np.array([key(r) for r in records])
+    fs_cum = np.cumsum(fs)
+    fs_total = fs_cum[-1]
+    p = fs_total / nkeep
+    start = np.random.uniform(0, p)
+    ps = np.arange(start, nkeep * p, p)
+    idx = [np.where(fs_cum > p)[0][0] for p in ps]
+    return idx
+
+
+def rank_selection(key, nkeep, individuals, records, reverse=False):
+    fs_ = sorted(
+        [(i, key(r)) for i, r in enumerate(records)],
+        key=lambda x: x[1], reverse=reverse)
+    idx = [x[0] for x in fs_]
+    ps = np.arange(1, len(idx) + 1)
+    ps = ps / sum(ps)
+    return np.random.choice(idx, nkeep, p=ps)
 
 
 if __name__ == '__main__':

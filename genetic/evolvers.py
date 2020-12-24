@@ -118,7 +118,8 @@ class GenericEvolver(BaseEvolver):
         recombined_groups = crossover(individuals, records, mates, **kwargs)
         recombined = list(chain.from_iterable(recombined_groups))
         if len(recombined) != n_mating_groups:
-            raise RuntimeError
+            raise RuntimeError(f'The number of children produced by the `Crossover` operator {len(recombined)} '
+                               f'does not equal the number of mating groups {n_mating_groups}')
         children = mutator(recombined, **kwargs)
         child_scores = estimator(children, **kwargs)
         child_records = recorder.start(children, child_scores, **kwargs)
