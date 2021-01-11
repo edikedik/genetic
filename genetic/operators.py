@@ -4,16 +4,15 @@ import operator as op
 import random
 from collections import Counter
 from itertools import chain, starmap
-from typing import Callable, Collection, Dict, Generic, List, Optional, Tuple, \
-    TypeVar
+from typing import (Any, Callable, Collection, Dict, Generic, List, Optional, Tuple,
+                    TypeVar)
 
 import numpy as np  # type: ignore
 from tqdm import tqdm  # type: ignore
 
-from genetic.base import Mutator, Crossover, Estimator, Executor, \
-    KeyT, MateSelector, Ord, Recorder, SelectionPolicy
+from genetic.base import (Mutator, Crossover, Estimator, Executor,
+                          KeyT, MateSelector, Ord, Recorder, SelectionPolicy)
 from genetic.utils import replace
-
 
 Individual = TypeVar('Individual', covariant=True)
 Record = TypeVar('Record', covariant=True)
@@ -30,6 +29,7 @@ __all__ = (
     'rank_selection'
 )
 
+
 # TODO should we reimplement Generic* in terms of the Functor API? Consider that
 #      Python does not support higher-kinded types
 
@@ -41,6 +41,7 @@ class GenericEstimator(Generic[Individual], Estimator):
     def __init__(self,
                  func: Callable[[Individual], Ord],
                  cache=False,
+                 hash_func: Optional[Callable[[Individual], Any]] = None,
                  executor: Optional[Executor] = None):
         """
         :param func: A scoring function, i.e., a `Callable` accepting an `Individual` and returning `Ord`-typed score.
@@ -52,6 +53,7 @@ class GenericEstimator(Generic[Individual], Estimator):
         if not (executor is None or isinstance(executor, Executor)):
             raise ValueError
         self._func = func
+        self._hash = hash_func
         self.executor = executor
         self._cache: Optional[Dict[Individual, Ord]] = {} if cache else None
 
@@ -62,6 +64,11 @@ class GenericEstimator(Generic[Individual], Estimator):
     @property
     def cache(self) -> Optional[Dict[Individual, Ord]]:
         return self._cache
+
+    def hash(self, indiv: Individual) -> Any:
+        if self._hash is None:
+            return indiv
+        return self._hash(indiv)
 
     def __call__(self, individuals: List[Individual], verbose=False, **kwargs) -> List[Ord]:
         """
@@ -118,7 +125,7 @@ class GenericEstimator(Generic[Individual], Estimator):
         try:
             cached_scores: List[Optional[Ord]] = (
                 [None] * n_total if not self._cache else
-                list(map(self._cache.get, individuals))
+                list(map(self._cache.get, map(self.hash, individuals)))
             )
         except TypeError:
             raise TypeError('Caching requires hashable individuals')
@@ -137,7 +144,7 @@ class GenericEstimator(Generic[Individual], Estimator):
         # update cache
         if self._cache is not None and uncached:
             self._cache.update(
-                {indiv: score for indiv, score in zip(uncached, uncached_scores)}
+                {self.hash(indiv): score for indiv, score in zip(uncached, uncached_scores)}
             )
         mask = [score is None for score in cached_scores] if uncached else None
         return (
